@@ -1,9 +1,10 @@
 use std::io::{self, Result, Error, ErrorKind};
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub struct Request<'a> {
     info: Info<'a>,
-    headers: Vec<Header<'a>>,
+    headers: HashMap<&'a str, &'a str>,
     body: &'a str,
     length: u64,
 }
@@ -23,18 +24,58 @@ pub struct Header<'a> {
 
 impl Request<'_> {
     pub fn new<'a>(src: &'a str) -> Result<Request<'a>> {
-        let mut lines = src.lines();
-
-        let first = to_result(lines.next(), "not enough info")?;
+        let (first, headers, body) = Self::split_content(src)?;
 
         let info = Info::new(first)?;
 
         Ok( Request {
             info,
-            headers: Vec::new(),
-            body: src,
-            length: 1,
+            headers: HashMap::new(),
+            body: body,
+            length: body.len() as u64,
         })
+    }
+
+    fn split_content(src: &str) -> Result<(&str, Vec<&str>, &str)> {
+        let splited: Vec<&str> = src.split("\r\n\r\n").collect();
+
+        let data = to_result(splited.get(0), "failed to parse")?;
+        let body = to_result(splited.get(1), "failed to parse")?;
+
+        let lines: Vec<&str> = data.split("\r\n").collect();
+        let first = to_result(lines.get(0), "failed to parse")?;
+
+        let mut iter = lines[1..].iter();
+        let mut headers: Vec<&str> = Vec::new();
+
+        loop {
+            let line = to_result(iter.next(), "failed to parse")?;
+
+            if line == &"" {
+                break;
+            }
+
+            headers.push(line);
+        }
+
+        return Ok((first, headers, body));
+    }
+
+    pub fn parse_headers(lines: Vec<&str>) -> Result<HashMap<&str, &str>> {
+        let v: Vec<Vec<&str>> = lines
+            .iter()
+            .map( |line| line.split(": ").collect() )
+            .collect();
+
+        let mut headers: HashMap<&str, &str> = HashMap::new();
+        for l in &v {
+            let name = to_result(l.get(0), "failed to parse header")?;
+            let value = to_result(l.get(1), "failed to parse header")?;
+
+            headers.insert(name, value);
+        }
+
+        Ok(headers)
     }
 }
 
@@ -65,26 +106,6 @@ impl Info<'_> {
     }
 }
 
-impl Header<'_> {
-    pub fn new<'a>(lines: Vec<&'a str>) -> Result<Vec<Header<'a>>> {
-        let v: Vec<Vec<&str>> = lines
-            .iter()
-            .map( |line| line.split(": ").collect() )
-            .collect();
-
-        let mut headers = Vec::new();
-        for l in v {
-            let name = to_result(l.get(0), "failed to parse header")?;
-            let value = to_result(l.get(1), "failed to parse header")?;
-            let header = Header { name, value };
-
-            headers.push(header);
-        }
-
-        Ok(headers)
-    }
-}
-
 fn to_result<T>(value: Option<T>, msg: &str) -> Result<T> {
     value.ok_or(Error::new(ErrorKind::Other, msg))
 }
@@ -93,9 +114,9 @@ fn to_result<T>(value: Option<T>, msg: &str) -> Result<T> {
 pub mod tests {
     use super::*;
 
-    /*
+    #[test]
     pub fn should_parse_request() {
-        let content = "GET /path/to/resource HTTP/1.0\r\nAccept: *_/_*\r\nAccept-Language: ja\r\nAccept-Encoding: gzip, deflate\r\nUser-Agent: Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)\r\nConnection: Close\r\n";
+        let content = "GET /path/to/resource HTTP/1.0\r\nAccept: */*\r\nConnection: Close\r\nUser-Agent: Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)\r\n\r\nhogehoge\r\nfugafuga\r\n";
         let request = Request::new(content);
 
         let info = Info {
@@ -104,12 +125,17 @@ pub mod tests {
             protocol_minor_version: 0,
         };
 
-        let headers = Vec::new()
-        headers: Vec<Header<'a>>,
-        body: &'a str,
-        length: u64,
+        let mut headers = Vec::new();
+        headers.push(Header { name: "Accept", value: "*/*" });
+        headers.push(Header { name: "Connection", value: "Close" });
+        headers.push(Header { name: "User-Agent", value: "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" });
+
+        let body = "hogehgoe\r\nfugafuga";
+
+        let expect = Request { info, headers, body };
+
+        assert_eq!(request, expect);
     }
-    */
 
     #[test]
     pub fn should_parse_info() {
@@ -129,12 +155,12 @@ pub mod tests {
         let content = "Accept: */*\r\nConnection: Close\r\nUser-Agent: Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)\r\n";
 
         let lines = content.lines().collect();
-        let headers = Header::new(lines).expect("failed to parse");
+        let headers = Request::parse_headers(lines).expect("failed to parse");
 
-        let mut expect = Vec::new();
-        expect.push(Header { name: "Accept", value: "*/*" });
-        expect.push(Header { name: "Connection", value: "Close" });
-        expect.push(Header { name: "User-Agent", value: "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" });
+        let mut expect = HashMap::new();
+        expect.insert("Accept", "*/*" );
+        expect.insert("Connection", "Close" );
+        expect.insert("User-Agent", "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" );
 
         assert_eq!(headers, expect);
     }
