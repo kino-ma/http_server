@@ -65,6 +65,26 @@ impl Info<'_> {
     }
 }
 
+impl Header<'_> {
+    pub fn new<'a>(lines: Vec<&'a str>) -> Result<Vec<Header<'a>>> {
+        let v: Vec<Vec<&str>> = lines
+            .iter()
+            .map( |line| line.split(": ").collect() )
+            .collect();
+
+        let mut headers = Vec::new();
+        for l in v {
+            let name = to_result(l.get(0), "failed to parse header")?;
+            let value = to_result(l.get(1), "failed to parse header")?;
+            let header = Header { name, value };
+
+            headers.push(header);
+        }
+
+        Ok(headers)
+    }
+}
+
 fn to_result<T>(value: Option<T>, msg: &str) -> Result<T> {
     value.ok_or(Error::new(ErrorKind::Other, msg))
 }
@@ -104,14 +124,18 @@ pub mod tests {
         assert_eq!(info, expect);
     }
 
+    #[test]
     pub fn should_parse_headers() {
         let content = "Accept: */*\r\nConnection: Close\r\nUser-Agent: Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)\r\n";
-        let headers = content.lines().map(|line| Header::new(line).expect("failed to parse"));
+
+        let lines = content.lines().collect();
+        let headers = Header::new(lines).expect("failed to parse");
 
         let mut expect = Vec::new();
         expect.push(Header { name: "Accept", value: "*/*" });
         expect.push(Header { name: "Connection", value: "Close" });
-        expect.push(Header { name: "Accept", value: "*/*" });
-        expect.push(Header { name: "User-Agent", value: "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;" });;
+        expect.push(Header { name: "User-Agent", value: "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" });
+
+        assert_eq!(headers, expect);
     }
 }
