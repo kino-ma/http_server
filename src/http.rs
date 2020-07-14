@@ -6,7 +6,7 @@ pub struct Request<'a> {
     info: Info<'a>,
     headers: HashMap<&'a str, &'a str>,
     body: &'a str,
-    length: u64,
+    length: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -28,29 +28,29 @@ impl Request<'_> {
 
         let info = Info::new(first)?;
 
+        let headers = Self::parse_headers(headers)?;
+
         Ok( Request {
             info,
-            headers: HashMap::new(),
+            headers,
             body: body,
-            length: body.len() as u64,
+            length: body.len() as usize,
         })
     }
 
     fn split_content(src: &str) -> Result<(&str, Vec<&str>, &str)> {
-        let splited: Vec<&str> = src.split("\r\n\r\n").collect();
+        let splited: Vec<&str> = src.splitn(2, "\r\n\r\n").collect();
 
-        let data = to_result(splited.get(0), "failed to parse")?;
-        let body = to_result(splited.get(1), "failed to parse")?;
+        let data = to_result(splited.get(0), "failed to parse data")?;
+        let body = to_result(splited.get(1), "failed to parse body")?;
 
         let lines: Vec<&str> = data.split("\r\n").collect();
-        let first = to_result(lines.get(0), "failed to parse")?;
+        let first = to_result(lines.get(0), "failed to parse request line")?;
 
         let mut iter = lines[1..].iter();
         let mut headers: Vec<&str> = Vec::new();
 
-        loop {
-            let line = to_result(iter.next(), "failed to parse")?;
-
+        while let Some(line) = iter.next() {
             if line == &"" {
                 break;
             }
@@ -83,9 +83,9 @@ impl Info<'_> {
     pub fn new<'a>(line: &'a str) -> Result<Info<'a>> {
         let mut words = line.split_whitespace();
 
-        let method = to_result(words.next(), "failed to parse")?;
-        let path = to_result(words.next(), "failed to parse")?;
-        let protocol_minor_version = Self::parse_version(to_result(words.next(), "failed to parse")?)?;
+        let method = to_result(words.next(), "failed to parse method")?;
+        let path = to_result(words.next(), "failed to parse path")?;
+        let protocol_minor_version = Self::parse_version(to_result(words.next(), "failed to parse version")?)?;
 
         Ok( Info {
             method,
@@ -98,9 +98,9 @@ impl Info<'_> {
         let pv = src
             .chars()
             .last();
-        let pv = to_result(pv, "failed to parse")?
+        let pv = to_result(pv, "failed to get version")?
             .to_digit(10);
-        let pv = to_result(pv, "failed to parse");
+        let pv = to_result(pv, "failed to parse version number");
 
         pv.and_then(|x| Ok(x as i32))
     }
@@ -116,8 +116,8 @@ pub mod tests {
 
     #[test]
     pub fn should_parse_request() {
-        let content = "GET /path/to/resource HTTP/1.0\r\nAccept: */*\r\nConnection: Close\r\nUser-Agent: Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)\r\n\r\nhogehoge\r\nfugafuga\r\n";
-        let request = Request::new(content);
+        let content = "GET /path/to/resource HTTP/1.0\r\nAccept: */*\r\nConnection: Close\r\nUser-Agent: Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)\r\n\r\nhogehoge\r\n\r\nfugafuga\r\n";
+        let request = Request::new(content).expect("failed to parse request(test)");
 
         let info = Info {
             method: "GET",
@@ -125,14 +125,14 @@ pub mod tests {
             protocol_minor_version: 0,
         };
 
-        let mut headers = Vec::new();
-        headers.push(Header { name: "Accept", value: "*/*" });
-        headers.push(Header { name: "Connection", value: "Close" });
-        headers.push(Header { name: "User-Agent", value: "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" });
+        let mut headers = HashMap::new();
+        headers.insert("Accept", "*/*" );
+        headers.insert("Connection", "Close" );
+        headers.insert("User-Agent", "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" );
 
-        let body = "hogehgoe\r\nfugafuga";
+        let body = "hogehoge\r\n\r\nfugafuga\r\n";
 
-        let expect = Request { info, headers, body };
+        let expect = Request { info, headers, body, length: body.len() as usize };
 
         assert_eq!(request, expect);
     }
