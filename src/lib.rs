@@ -11,7 +11,7 @@ pub fn log_exit(text: &str) {
 pub fn service<I: Read, O: Write>(mut input: I, mut output: O, docdir: &str) -> std::io::Result<()> {
     let mut buf = String::new();
 
-    let mut req: http::Request;
+    let mut req = http::Request::new(&buf)?;
 
     input.read_to_string(&mut buf)?;
     output.write_all(&buf.into_bytes())
