@@ -77,6 +77,10 @@ impl Request<'_> {
 
         Ok(headers)
     }
+
+    pub fn resource(&self) -> &str {
+        self.info.path
+    }
 }
 
 impl Info<'_> {
@@ -110,7 +114,7 @@ impl Info<'_> {
 
 /* Response */
 
-use std::fs::{File};
+use std::fs::{self, File};
 
 #[derive(Debug, PartialEq)]
 pub struct Response {
@@ -127,20 +131,37 @@ pub struct Status {
 
 impl Response {
     pub fn new(request: Request, docroot: &str) -> Result<Response> {
+        let filepath = Self::make_path(docroot, request.resource());
+        let body = fs::read_to_string(filepath)?;
+
+        let headers = Self::make_headers(&body);
+
         let status = Status {
             code: 200,
             text: "OK".to_string(),
         };
-
-        let headers = HashMap::new();
-
-        let body = String::new();
 
         Ok(Response {
             status,
             headers,
             body,
         })
+    }
+
+    fn make_headers(body: &String) -> HashMap<&'static str, String> {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Length", body.len().to_string());
+        headers.insert("Content-Type", "text/plain".to_string());
+        headers.insert("Server", "LittleHTTP/1.0".to_string());
+        headers.insert("Connection", "Close".to_string());
+
+        headers
+    }
+
+    fn make_path(docroot: &str, filename: &str) -> String {
+        let mut path = docroot.to_string();
+        path.push_str(filename);
+        path
     }
 }
 
@@ -228,14 +249,13 @@ pub mod tests {
 
         let status = Status { code: 200, text: "OK".to_string() };
 
+        let body = "<h1>hogehoge</h1>\n".to_string();
+
         let mut headers = HashMap::new();
-        headers.insert("Content-Length", "13".to_string());
-        headers.insert("Content-Type", "text/html".to_string());
-        headers.insert("Date", "Thu, 1 Jul 2020 00:00:00 GMT".to_string());
+        headers.insert("Content-Length", body.len().to_string());
+        headers.insert("Content-Type", "text/plain".to_string());
         headers.insert("Server", "LittleHTTP/1.0".to_string());
         headers.insert("Connection", "Close".to_string());
-
-        let body = "<h1>hogehoge</h1>".to_string();
 
         let expect = Response { status, headers, body };
 
