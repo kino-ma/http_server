@@ -41,8 +41,10 @@ impl Request<'_> {
     fn split_content(src: &str) -> Result<(&str, Vec<&str>, &str)> {
         let splited: Vec<&str> = src.splitn(2, "\r\n\r\n").collect();
 
-        let data = to_result(splited.get(0), "failed to parse data")?;
-        let body = to_result(splited.get(1), "failed to parse body")?;
+        println!("{:?}", splited);
+
+        let data = to_result(splited.get(0), &format!("failed to parse data: '{}'", src))?;
+        let body = to_result(splited.get(1), &format!("failed to parse body: '{}'", src))?;
 
         let lines: Vec<&str> = data.split("\r\n").collect();
         let first = to_result(lines.get(0), "failed to parse request line")?;
