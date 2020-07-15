@@ -112,12 +112,14 @@ impl Info<'_> {
 
 use std::fs::{File};
 
+#[derive(Debug, PartialEq)]
 pub struct Response {
     status: Status,
-    headers: HashMap<String, String>,
+    headers: HashMap<&'static str, String>,
     body: String,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Status {
     code: i32,
     text: String,
@@ -221,6 +223,22 @@ pub mod tests {
 
         let request = Request { info, headers, body, length: body.len() as usize };
 
-        let page_content = "<h1>hogehoge</h1>";
+        let response = Response::new(request, "./pages").expect("failed to create response(test)");
+
+
+        let status = Status { code: 200, text: "OK".to_string() };
+
+        let mut headers = HashMap::new();
+        headers.insert("Content-Length", "13".to_string());
+        headers.insert("Content-Type", "text/html".to_string());
+        headers.insert("Date", "Thu, 1 Jul 2020 00:00:00 GMT".to_string());
+        headers.insert("Server", "LittleHTTP/1.0".to_string());
+        headers.insert("Connection", "Close".to_string());
+
+        let body = "<h1>hogehoge</h1>".to_string();
+
+        let expect = Response { status, headers, body };
+
+        assert_eq!(response, expect);
     }
 }
