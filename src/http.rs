@@ -106,6 +106,44 @@ impl Info<'_> {
     }
 }
 
+
+
+/* Response */
+
+use std::fs::{File};
+
+pub struct Response {
+    status: Status,
+    headers: HashMap<String, String>,
+    body: String,
+}
+
+pub struct Status {
+    code: i32,
+    text: String,
+}
+
+impl Response {
+    pub fn new(request: Request, docroot: &str) -> Result<Response> {
+        let status = Status {
+            code: 200,
+            text: "OK".to_string(),
+        };
+
+        let headers = HashMap::new();
+
+        let body = String::new();
+
+        Ok(Response {
+            status,
+            headers,
+            body,
+        })
+    }
+}
+
+
+
 fn to_result<T>(value: Option<T>, msg: &str) -> Result<T> {
     value.ok_or(Error::new(ErrorKind::Other, msg))
 }
@@ -116,12 +154,12 @@ pub mod tests {
 
     #[test]
     pub fn should_parse_request() {
-        let content = "GET /path/to/resource HTTP/1.0\r\nAccept: */*\r\nConnection: Close\r\nUser-Agent: Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)\r\n\r\nhogehoge\r\n\r\nfugafuga\r\n";
+        let content = "GET /hoge.html HTTP/1.0\r\nAccept: */*\r\nConnection: Close\r\nUser-Agent: Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)\r\n\r\nhogehoge\r\n\r\nfugafuga\r\n";
         let request = Request::new(content).expect("failed to parse request(test)");
 
         let info = Info {
             method: "GET",
-            path: "/path/to/resource",
+            path: "/hoge.html",
             protocol_minor_version: 0,
         };
 
@@ -163,5 +201,26 @@ pub mod tests {
         expect.insert("User-Agent", "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" );
 
         assert_eq!(headers, expect);
+    }
+
+
+    #[test]
+    pub fn should_create_file_response() {
+        let info = Info {
+            method: "GET",
+            path: "/hoge.html",
+            protocol_minor_version: 0,
+        };
+
+        let mut headers = HashMap::new();
+        headers.insert("Accept", "*/*" );
+        headers.insert("Connection", "Close" );
+        headers.insert("User-Agent", "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" );
+
+        let body = "hogehoge\r\n\r\nfugafuga\r\n";
+
+        let request = Request { info, headers, body, length: body.len() as usize };
+
+        let page_content = "<h1>hogehoge</h1>";
     }
 }
