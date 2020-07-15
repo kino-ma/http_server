@@ -16,7 +16,7 @@ pub fn service(mut stream: TcpStream, docdir: &str) -> std::io::Result<()> {
 
     let mut request = http::Request::new(&buf)?;
 
-    let mut response = http:::Response::new(request)?;
+    let mut response = http::Response::new(request)?;
 
-    response.send(stream);
+    response.send(&mut stream);
 }
