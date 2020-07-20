@@ -1,6 +1,5 @@
 pub mod http;
 
-use std::io::prelude::*;
 use std::io::{Read};
 use std::net::TcpStream;
 
@@ -33,9 +32,9 @@ pub fn service(mut stream: TcpStream, docdir: &str) -> std::io::Result<()> {
         }
     }
 
-    let mut request = http::Request::new(&content)?;
+    let request = http::Request::new(&content)?;
 
-    let mut response = match http::Response::new(request.resource(), docdir) {
+    let response = match http::Response::new(request.resource(), docdir) {
         Ok(r) => r,
         Err(error) => {
             if error.kind() == std::io::ErrorKind::NotFound {

@@ -1,5 +1,5 @@
 use std::fmt;
-use std::io::{self, Result, Error, ErrorKind};
+use std::io::{Result, Error, ErrorKind};
 use std::net::TcpStream;
 
 #[derive(Debug, PartialEq)]
@@ -136,7 +136,7 @@ impl<'a> RequestHeaders<'a> {
 
 /* Response */
 
-use std::fs::{self, File};
+use std::fs;
 
 #[derive(Debug, PartialEq)]
 pub struct Response {
@@ -188,7 +188,7 @@ impl Response {
         use std::io::Write;
 
         let text = self.show();
-        stream.write_all(text.as_bytes());
+        stream.write_all(text.as_bytes())?;
         Ok(text)
     }
 

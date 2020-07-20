@@ -17,7 +17,7 @@ fn main() {
     let listener = TcpListener::bind("127.0.0.1:7878").expect("failed to bind port");
 
     for stream in listener.incoming() {
-        let mut stream = match stream {
+        let stream = match stream {
             Ok(stream) => stream,
             Err(error) => {
                 log_exit(&error.to_string());
