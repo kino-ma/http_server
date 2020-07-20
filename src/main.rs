@@ -26,7 +26,7 @@ fn main() {
         };
 
         if let Err(error) = service(stream, &args[1]) {
-            log_exit(&error.to_string());
+            eprintln!("error: {}", &error.to_string());
         }
     }
 }
