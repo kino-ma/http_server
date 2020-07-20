@@ -334,20 +334,29 @@ pub mod tests {
 
         let request = Request { info, headers, body, length: body.len() as usize };
 
-        let response = Response::new(request, "./pages").expect("failed to create response(test)");
+        let response = Response::new(request.resource(), "./pages").expect("failed to create response(test)");
 
 
         let status = Status { code: 200, text: "OK".to_string() };
 
-        let body = "<h1>hogehoge</h1>\n".to_string();
+        let body = "<!DOCTYPE html>
+<html>
+<head>
+    <title>hogehoge</title>
+</head>
+<body>
+    <h1>hogehoge</h1>
+</body>
+</html>
+".to_string();
 
         let mut headers = ResponseHeaders::new();
         headers.insert("Content-Length", body.len().to_string());
-        headers.insert("Content-Type", "text/plain".to_string());
+        headers.insert("Content-Type", "text/html".to_string());
         headers.insert("Server", "LittleHTTP/1.0".to_string());
         headers.insert("Connection", "Close".to_string());
 
-        let expect = Response { status, headers, body };
+        let expect = Response { version: "HTTP/1.0", status, headers, body };
 
         assert_eq!(response, expect);
     }
