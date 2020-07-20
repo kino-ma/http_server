@@ -1,6 +1,7 @@
 pub mod http;
 
 use std::io::prelude::*;
+use std::io::{Read};
 use std::net::TcpStream;
 
 pub fn log_exit(text: &str) {
@@ -10,13 +11,42 @@ pub fn log_exit(text: &str) {
 }
 
 pub fn service(mut stream: TcpStream, docdir: &str) -> std::io::Result<()> {
-    let mut buf = String::new();
+    let mut buf = [0; 2048];
+    let mut content = String::new();
 
-    stream.read_to_string(&mut buf)?;
+    loop {
+        let nbytes = stream.read(&mut buf)?;
 
-    let mut request = http::Request::new(&buf)?;
+        let buf_str: &str = match std::str::from_utf8(&buf[..]) {
+            Ok(s) => s,
+            Err(error) => {
+                let kind = std::io::ErrorKind::Other;
+                return Err(std::io::Error::new(kind, error));
+            }
 
-    let mut response = http::Response::new(request)?;
+        };
 
-    response.send(&mut stream);
+        content.push_str(&buf_str[0..nbytes]);
+
+        if nbytes < 2048 {
+            break;
+        }
+    }
+
+    let mut request = http::Request::new(&content)?;
+
+    let mut response = match http::Response::new(request.resource(), docdir) {
+        Ok(r) => r,
+        Err(error) => {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                http::Response::new("/404.html", docdir)?
+            } else {
+                http::Response::new("/500.html", docdir)?
+            }
+        }
+    };
+
+    response.send(&mut stream)?;
+
+    Ok(())
 }
