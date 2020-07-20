@@ -1,10 +1,11 @@
+use std::fmt;
 use std::io::{self, Result, Error, ErrorKind};
-use std::collections::HashMap;
+use std::net::TcpStream;
 
 #[derive(Debug, PartialEq)]
 pub struct Request<'a> {
     info: Info<'a>,
-    headers: HashMap<&'a str, &'a str>,
+    headers: RequestHeaders<'a>,
     body: &'a str,
     length: usize,
 }
@@ -17,10 +18,16 @@ pub struct Info<'a> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Header<'a> {
-    name: &'a str,
+pub struct RequestHeaders<'a> {
+    headers: Vec<RequestHeader<'a>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct RequestHeader<'a> {
+    key: &'a str,
     value: &'a str,
 }
+
 
 impl Request<'_> {
     pub fn new<'a>(src: &'a str) -> Result<Request<'a>> {
@@ -41,7 +48,7 @@ impl Request<'_> {
     fn split_content(src: &str) -> Result<(&str, Vec<&str>, &str)> {
         let splited: Vec<&str> = src.splitn(2, "\r\n\r\n").collect();
 
-        println!("{:?}", splited);
+        println!("{:?}", splited[0]);
 
         let data = to_result(splited.get(0), &format!("failed to parse data: '{}'", src))?;
         let body = to_result(splited.get(1), &format!("failed to parse body: '{}'", src))?;
@@ -63,13 +70,14 @@ impl Request<'_> {
         return Ok((first, headers, body));
     }
 
-    pub fn parse_headers(lines: Vec<&str>) -> Result<HashMap<&str, &str>> {
+    pub fn parse_headers(lines: Vec<&str>) -> Result<RequestHeaders> {
         let v: Vec<Vec<&str>> = lines
             .iter()
             .map( |line| line.split(": ").collect() )
             .collect();
 
-        let mut headers: HashMap<&str, &str> = HashMap::new();
+        let mut headers = RequestHeaders::new();
+
         for l in &v {
             let name = to_result(l.get(0), "failed to parse header")?;
             let value = to_result(l.get(1), "failed to parse header")?;
@@ -86,7 +94,7 @@ impl Request<'_> {
 }
 
 impl Info<'_> {
-    pub fn new<'a>(line: &'a str) -> Result<Info<'a>> {
+    pub fn new(line: &str) -> Result<Info> {
         let mut words = line.split_whitespace();
 
         let method = to_result(words.next(), "failed to parse method")?;
@@ -112,6 +120,18 @@ impl Info<'_> {
     }
 }
 
+impl<'a> RequestHeaders<'a> {
+    pub fn new() -> RequestHeaders<'a> {
+        let headers = Vec::new();
+        RequestHeaders { headers }
+    }
+
+    pub fn insert(&mut self, key: &'a str, value: &'a str) {
+        let header = RequestHeader { key, value };
+        self.headers.push(header);
+    }
+}
+
 
 
 /* Response */
@@ -120,8 +140,9 @@ use std::fs::{self, File};
 
 #[derive(Debug, PartialEq)]
 pub struct Response {
+    version: &'static str,
     status: Status,
-    headers: HashMap<&'static str, String>,
+    headers: ResponseHeaders,
     body: String,
 }
 
@@ -131,10 +152,22 @@ pub struct Status {
     text: String,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct ResponseHeaders {
+    headers: Vec<ResponseHeader>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ResponseHeader {
+    key: &'static str,
+    value: String,
+}
+
 impl Response {
-    pub fn new(request: Request, docroot: &str) -> Result<Response> {
-        let filepath = Self::make_path(docroot, request.resource());
-        let body = fs::read_to_string(filepath)?;
+    pub fn new(resource: &str, docroot: &str) -> Result<Response> {
+        let filepath = Self::make_path(docroot, resource);
+
+        let body = fs::read_to_string(&filepath)?;
 
         let headers = Self::make_headers(&body);
 
@@ -143,17 +176,27 @@ impl Response {
             text: "OK".to_string(),
         };
 
-        Ok(Response {
+        Ok( Response {
+            version: "HTTP/1.0",
             status,
             headers,
             body,
         })
     }
 
-    fn make_headers(body: &String) -> HashMap<&'static str, String> {
-        let mut headers = HashMap::new();
+    pub fn send(&self, stream: &mut TcpStream) -> Result<String> {
+        use std::io::Write;
+
+        let text = self.show();
+        stream.write_all(text.as_bytes());
+        Ok(text)
+    }
+
+    fn make_headers(body: &String) -> ResponseHeaders {
+        let mut headers: ResponseHeaders = ResponseHeaders::new();
+
         headers.insert("Content-Length", body.len().to_string());
-        headers.insert("Content-Type", "text/plain".to_string());
+        headers.insert("Content-Type", "text/html".to_string());
         headers.insert("Server", "LittleHTTP/1.0".to_string());
         headers.insert("Connection", "Close".to_string());
 
@@ -164,6 +207,51 @@ impl Response {
         let mut path = docroot.to_string();
         path.push_str(filename);
         path
+    }
+
+    pub fn show(&self) -> String {
+        format!("{}", self)
+    }
+}
+
+impl ResponseHeaders {
+    pub fn new() -> ResponseHeaders {
+        let headers = Vec::new();
+        ResponseHeaders { headers }
+    }
+
+    pub fn insert(&mut self, key: &'static str, value: String) {
+        let header = ResponseHeader { key, value };
+        self.headers.push(header);
+    }
+}
+
+impl fmt::Display for Response {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", format!("{} {}\r\n{}\r\n\r\n{}",
+                self.version,
+                self.status,
+                self.headers,
+                self.body))
+    }
+}
+
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.code, self.text)
+    }
+}
+
+impl fmt::Display for ResponseHeaders {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let t = self.headers.iter().map(|header| format!("{}", header)).collect::<Vec<_>>().join("\r\n");
+        write!(f, "{}", t)
+    }
+}
+
+impl fmt::Display for ResponseHeader {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {}", self.key, self.value)
     }
 }
 
@@ -188,7 +276,7 @@ pub mod tests {
             protocol_minor_version: 0,
         };
 
-        let mut headers = HashMap::new();
+        let mut headers = RequestHeaders::new();
         headers.insert("Accept", "*/*" );
         headers.insert("Connection", "Close" );
         headers.insert("User-Agent", "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" );
@@ -220,7 +308,7 @@ pub mod tests {
         let lines = content.lines().collect();
         let headers = Request::parse_headers(lines).expect("failed to parse");
 
-        let mut expect = HashMap::new();
+        let mut expect = RequestHeaders::new();
         expect.insert("Accept", "*/*" );
         expect.insert("Connection", "Close" );
         expect.insert("User-Agent", "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" );
@@ -237,7 +325,7 @@ pub mod tests {
             protocol_minor_version: 0,
         };
 
-        let mut headers = HashMap::new();
+        let mut headers = RequestHeaders::new();
         headers.insert("Accept", "*/*" );
         headers.insert("Connection", "Close" );
         headers.insert("User-Agent", "Mozilla/4.0 (Compatible; MSIE 6.0; Windows NT 5.1;)" );
@@ -253,7 +341,7 @@ pub mod tests {
 
         let body = "<h1>hogehoge</h1>\n".to_string();
 
-        let mut headers = HashMap::new();
+        let mut headers = ResponseHeaders::new();
         headers.insert("Content-Length", body.len().to_string());
         headers.insert("Content-Type", "text/plain".to_string());
         headers.insert("Server", "LittleHTTP/1.0".to_string());
